@@ -1,6 +1,4 @@
-# Dreame Sales Bot v1 (PTB v20+ compatible)
-# Requirements: python-telegram-bot==20.3, requests
-
+# Dreame Sales Bot v1 (PTB v20+ compatible) — full functionality (per-user plans)
 import logging
 import requests
 import os
@@ -23,7 +21,6 @@ CURRENCY = "₽"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# States
 CHOOSING, ENTER_QTY, ENTER_PLAN, ENTER_PRICE, ENTER_DELETE = range(5)
 
 MAIN_MENU = [
@@ -33,18 +30,19 @@ MAIN_MENU = [
     ["Изменить сумму позиции", "❌ Очистить всё (только тест)"],
 ]
 
-# --- Helpers ---
 def send_to_api(action, payload):
     data = {"action": action, "payload": payload}
     try:
         r = requests.post(APPSCRIPT_URL, json=data, timeout=15)
         r.raise_for_status()
+        # Apps Script returns JSON text
         return r.json()
     except Exception as e:
         logger.exception("API call failed")
+        # return uniform error dict
         return {"ok": False, "error": str(e)}
 
-# --- Handlers ---
+# Handlers (async for PTB v20)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     keyboard = MAIN_MENU
@@ -63,7 +61,11 @@ async def main_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not resp.get("ok"):
             await update.message.reply_text("Ошибка получения категорий: " + resp.get("error", ""))
             return
-        kb = [[InlineKeyboardButton(cat, callback_data="cat:" + cat)] for cat in resp.get("categories", [])]
+        cats = resp.get("categories", [])
+        if not cats:
+            await update.message.reply_text("Категории не найдены.")
+            return
+        kb = [[InlineKeyboardButton(cat, callback_data="cat:" + cat)] for cat in cats]
         await update.message.reply_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(kb))
         return CHOOSING
 
@@ -72,13 +74,14 @@ async def main_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not resp.get("ok"):
             await update.message.reply_text("Ошибка: " + resp.get("error", ""))
             return
-        out = f"📊 Итоговая премия: {resp['summary']['total_commission']:,} {CURRENCY}\n"
-        out += f"Оборот: {resp['summary']['turnover']:,} {CURRENCY}\n"
-        out += f"План: {resp['summary']['plan']:,} {CURRENCY}\n"
-        out += f"Выполнение: {resp['summary']['pct']:.1f}%\n\n"
+        summary = resp.get("summary", {})
+        out = f"📊 Итоговая премия: {int(summary.get('total_commission',0)):,} {CURRENCY}\n"
+        out += f"Оборот: {int(summary.get('turnover',0)):,} {CURRENCY}\n"
+        out += f"План: {int(summary.get('plan',0)):,} {CURRENCY}\n"
+        out += f"Выполнение: {float(summary.get('pct',0)):.1f}%\n\n"
         out += "Продажи (по обороту):\n"
         for it in resp.get("sales", []):
-            out += f"- {it['model']} — {it['qty']} шт — {it['turnover']:,} {CURRENCY} — {it['commission']:,} {CURRENCY}\n"
+            out += f"- {it['model']} — {it['qty']} шт — {int(it['turnover']):,} {CURRENCY} — {int(it['commission']):,} {CURRENCY}\n"
         await update.message.reply_text(out)
         return
 
@@ -87,7 +90,7 @@ async def main_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not resp.get("ok"):
             await update.message.reply_text("Ошибка: " + resp.get("error", ""))
             return
-        out = f"Оборот: {resp['turnover']:,} {CURRENCY}\nПлан: {resp['plan']:,} {CURRENCY}\nВыполнение: {resp['pct']:.1f}%"
+        out = f"Оборот: {int(resp.get('turnover',0)):,} {CURRENCY}\nПлан: {int(resp.get('plan',0)):,} {CURRENCY}\nВыполнение: {float(resp.get('pct',0)):.1f}%"
         await update.message.reply_text(out)
         return
 
@@ -108,10 +111,7 @@ async def main_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not sales:
             await update.message.reply_text("Список продаж пуст.")
             return
-        kb = [
-            [InlineKeyboardButton(f"{s['model']} — {s['qty']}шт", callback_data="del:" + s["id"])]
-            for s in sales
-        ]
+        kb = [[InlineKeyboardButton(f"{s['model']} — {s['qty']}шт", callback_data="del:" + s["id"])] for s in sales]
         await update.message.reply_text("Выберите запись для удаления:", reply_markup=InlineKeyboardMarkup(kb))
         return ENTER_DELETE
 
@@ -120,54 +120,51 @@ async def main_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Тестовая очистка выполнена." if resp.get("ok") else "Ошибка")
         return
 
-    # Default fallback
-    await update.message.reply_text("Неизвестная команда/кнопка. Выберите действие в меню.")
+    await update.message.reply_text("Неизвестная команда. Используйте меню.")
 
-# CallbackQuery handler for category/segment/model/delete actions
+# callback handler
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
     data = query.data
+    user_id = query.from_user.id
 
     if data.startswith("cat:"):
-        cat = data.split("cat:", 1)[1]
+        cat = data.split("cat:",1)[1]
         resp = send_to_api("get_segments", {"category": cat})
         if not resp.get("ok"):
-            await query.edit_message_text("Ошибка: " + resp.get("error", ""))
+            await query.edit_message_text("Ошибка: " + resp.get("error",""))
             return
-        kb = [[InlineKeyboardButton(seg, callback_data=f"seg:{cat}|{seg}")] for seg in resp.get("segments", [])]
+        segs = resp.get("segments", [])
+        kb = [[InlineKeyboardButton(seg, callback_data=f"seg:{cat}|{seg}")] for seg in segs]
         await query.edit_message_text("Выберите сегмент:", reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data.startswith("seg:"):
-        payload = data.split("seg:", 1)[1]
-        cat, seg = payload.split("|", 1)
+        payload = data.split("seg:",1)[1]
+        cat, seg = payload.split("|",1)
         resp = send_to_api("get_models", {"category": cat, "segment": seg})
         if not resp.get("ok"):
-            await query.edit_message_text("Ошибка: " + resp.get("error", ""))
+            await query.edit_message_text("Ошибка: " + resp.get("error",""))
             return
-        kb = [
-            [InlineKeyboardButton(f"{m['code']} — {m['name']} — {int(m['price']):,}", callback_data=f"model:{m['code']}")]
-            for m in resp.get("models", [])
-        ]
+        models = resp.get("models", [])
+        kb = [[InlineKeyboardButton(f"{m['code']} — {m['name']} — {int(m['price']):,}", callback_data=f"model:{m['code']}")] for m in models]
         await query.edit_message_text("Выберите модель:", reply_markup=InlineKeyboardMarkup(kb))
         return
 
     if data.startswith("model:"):
-        code = data.split("model:", 1)[1]
-        # save pending model
-        context.user_data["pending_model"] = code
+        code = data.split("model:",1)[1]
+        context.user_data['pending_model'] = code
         await query.edit_message_text(f"Вы выбрали {code}. Введите количество:")
-        return
+        return ENTER_QTY
 
     if data.startswith("del:"):
-        rec_id = data.split("del:", 1)[1]
+        rec_id = data.split("del:",1)[1]
         resp = send_to_api("delete_sale", {"user_id": user_id, "record_id": rec_id})
         await query.edit_message_text("Запись удалена." if resp.get("ok") else "Ошибка при удалении")
         return
 
-# ENTER_QTY handler
+# ENTER handlers
 async def enter_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
@@ -175,17 +172,16 @@ async def enter_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введите целое число.")
         return ENTER_QTY
     qty = int(text)
-    code = context.user_data.get("pending_model")
+    code = context.user_data.get('pending_model')
     resp = send_to_api("add_sale", {"user_id": user_id, "code": code, "qty": qty})
     if not resp.get("ok"):
-        await update.message.reply_text("Ошибка при добавлении: " + resp.get("error", ""))
+        await update.message.reply_text("Ошибка при добавлении: " + resp.get("error",""))
     else:
         await update.message.reply_text("Продажа добавлена.")
     return ConversationHandler.END
 
-# ENTER_PLAN handler
 async def enter_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip().replace(" ", "")
+    text = update.message.text.strip().replace(" ","")
     if not text.isdigit():
         await update.message.reply_text("Введите число в рублях, например: 500000")
         return ENTER_PLAN
@@ -195,13 +191,12 @@ async def enter_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("План установлен." if resp.get("ok") else "Ошибка установки плана")
     return ConversationHandler.END
 
-# ENTER_PRICE handler
 async def enter_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = update.message.text.strip().split()
     if len(parts) != 2:
         await update.message.reply_text("Неверный формат. Пример: VC03 45990")
         return ENTER_PRICE
-    code, price = parts[0], parts[1].replace(" ", "")
+    code, price = parts[0], parts[1].replace(" ","")
     if not price.isdigit():
         await update.message.reply_text("Цена должна быть числом")
         return ENTER_PRICE
@@ -210,18 +205,17 @@ async def enter_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Цена обновлена." if resp.get("ok") else "Ошибка обновления")
     return ConversationHandler.END
 
-# Delete via callback already handled; fallback cancel
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Операция отменена.")
+    await update.message.reply_text('Операция отменена.')
     return ConversationHandler.END
 
-# Main entry / wiring
 def main():
-    if TOKEN.startswith("<") or TOKEN.strip() == "" or "PUT_YOUR_TOKEN" in TOKEN:
+    token = TOKEN
+    if token.startswith("<") or token.strip()=="" or "PUT_YOUR_TOKEN" in token:
         print("ERROR: set your token in environment variable DSB_TELEGRAM_TOKEN or replace in file")
         return
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(token).build()
 
     conv = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, main_text)],
@@ -232,17 +226,17 @@ def main():
             ENTER_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_price)],
             ENTER_DELETE: [CallbackQueryHandler(callback_handler)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler('cancel', cancel)],
         per_user=True,
     )
 
-    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler('start', start))
     application.add_handler(conv)
-    # Also add callback handler globally to catch inline callbacks outside conv
     application.add_handler(CallbackQueryHandler(callback_handler))
 
     print("Bot started. Press Ctrl+C to stop.")
     application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+
