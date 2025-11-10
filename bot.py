@@ -8,7 +8,17 @@
 import logging
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, ConversationHandler
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ConversationHandler,
+    ContextTypes
+)
+from telegram import Update
+from telegram.ext import filters
+
 import os
 
 # CONFIG
@@ -195,16 +205,16 @@ def main():
     if token.startswith("<") or token.strip()=="" or "PUT_YOUR_TOKEN" in token:
         print("ERROR: set your token in environment variable DSB_TELEGRAM_TOKEN or replace in file")
         return
-    updater = Updater(token, use_context=True)
-    dp = updater.dispatcher
+    updater = ApplicationBuilder().token(TOKEN).build()
+    dp = updater.application
 
     conv = ConversationHandler(
-        entry_points=[MessageHandler(Filters.text & ~Filters.command, handle_text)],
+        entry_points=[MessageHandler(filters.TEXT & ~Filters.command, handle_text)],
         states={
             CHOOSING: [CallbackQueryHandler(callback_handler)],
-            ENTER_QTY: [MessageHandler(Filters.text & ~Filters.command, enter_qty)],
-            ENTER_PLAN: [MessageHandler(Filters.text & ~Filters.command, enter_plan)],
-            ENTER_PRICE: [MessageHandler(Filters.text & ~Filters.command, enter_price)],
+            ENTER_QTY: [MessageHandler(filters.TEXT & ~Filters.command, enter_qty)],
+            ENTER_PLAN: [MessageHandler(filters.TEXT & ~Filters.command, enter_plan)],
+            ENTER_PRICE: [MessageHandler(filters.TEXT & ~Filters.command, enter_price)],
             ENTER_DELETE: [CallbackQueryHandler(callback_handler)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
@@ -216,8 +226,12 @@ def main():
     dp.add_handler(CallbackQueryHandler(callback_handler))
 
     print("Bot started. Press Ctrl+C to stop.")
-    updater.start_polling()
+    updater.run_polling()
     updater.idle()
 
 if __name__ == '__main__':
     main()
+if __name__ == '__main__':
+    application = ApplicationBuilder().token(TOKEN).build()
+    # Здесь добавятся все handlers
+    application.run_polling()
