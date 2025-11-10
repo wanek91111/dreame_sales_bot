@@ -16,6 +16,7 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes
 )
+from telegram.ext import ContextTypes
 from telegram import Update
 from telegram.ext import filters
 
@@ -54,7 +55,7 @@ def send_to_api(action, payload):
         logger.exception("API call failed")
         return {"ok": False, "error": str(e)}
 
-def handle_text(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
     if text == "Добавить позицию":
@@ -117,7 +118,7 @@ def handle_text(update: Update, context: CallbackContext):
         update.message.reply_text("Тестовая очистка выполнена." if resp.get("ok") else "Ошибка")
         return
 
-def callback_handler(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     query.answer()
@@ -156,7 +157,7 @@ def callback_handler(update: Update, context: CallbackContext):
         query.edit_message_text("Запись удалена." if resp.get("ok") else "Ошибка при удалении")
         return
 
-def enter_qty(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text.strip()
     if not text.isdigit():
@@ -171,7 +172,7 @@ def enter_qty(update: Update, context: CallbackContext):
         update.message.reply_text("Продажа добавлена.")
     return ConversationHandler.END
 
-def enter_plan(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip().replace(" ","")
     if not text.isdigit():
         update.message.reply_text("Введите число в рублях, например: 500000")
@@ -182,7 +183,7 @@ def enter_plan(update: Update, context: CallbackContext):
     update.message.reply_text("План установлен." if resp.get("ok") else "Ошибка установки плана")
     return ConversationHandler.END
 
-def enter_price(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = update.message.text.strip().split()
     if len(parts) != 2:
         update.message.reply_text("Неверный формат. Пример: VC03 45990")
@@ -196,7 +197,7 @@ def enter_price(update: Update, context: CallbackContext):
     update.message.reply_text("Цена обновлена." if resp.get("ok") else "Ошибка обновления")
     return ConversationHandler.END
 
-def cancel(update: Update, context: CallbackContext):
+def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update.message.reply_text('Операция отменена.')
     return ConversationHandler.END
 
