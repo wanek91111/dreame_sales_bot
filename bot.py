@@ -38,7 +38,7 @@ MAIN_MENU = [
     ["Изменить сумму позиции", "❌ Очистить всё (только тест)"]
 ]
 
-def start(update: Update, context: CallbackContext):
+def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     keyboard = MAIN_MENU
     reply = ReplyKeyboardMarkup(keyboard, one_time_keyboard=False, resize_keyboard=True)
