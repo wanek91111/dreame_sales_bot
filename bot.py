@@ -207,7 +207,7 @@ def main():
         print("ERROR: set your token in environment variable DSB_TELEGRAM_TOKEN or replace in file")
         return
     updater = ApplicationBuilder().token(TOKEN).build()
-    dp = updater.application
+    dp = updater
 
     conv = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~Filters.command, handle_text)],
